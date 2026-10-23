@@ -1,4 +1,4 @@
-# Page View Analytics
+# Event-Driven Pipeline
 
 Event-driven pipeline built with **Spring Boot**, **Spring Cloud Stream** and **Kafka Streams**
 It generates, consumes, and processes page events in real time, analyzes page views with Kafka Streams, and displays results through a web interface using Server-Sent Events

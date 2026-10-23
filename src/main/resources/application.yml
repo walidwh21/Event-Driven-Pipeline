@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: page-view-analytics
+  integration:
+    poller:
+      fixed-delay: 250          # how often autoViews emits an event (ms)
+  cloud:
+    function:
+      definition: logViews;autoViews;windowedCounts
+    stream:
+      kafka:
+        binder:
+          brokers: localhost:9092
+        streams:
+          binder:
+            brokers: localhost:9092
+            configuration:
+              commit.interval.ms: 1000
+      bindings:
+        logViews-in-0:
+          destination: views-manual
+          group: view-logger
+        autoViews-out-0:
+          destination: views-auto
+        windowedCounts-in-0:
+          destination: views-auto
+        windowedCounts-out-0:
+          destination: views-counts
+
+pageviews:
+  pages: home,pricing,docs,blog
+  visitors: visitor-a,visitor-b,visitor-c
+  min-dwell-ms: 100             # shorter visits are ignored by the aggregation
+  window-seconds: 5             # tumbling window size
+
+server:
+  port: 8080

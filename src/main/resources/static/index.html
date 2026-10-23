@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page View Analytics</title>
+  <style>
+    :root { --bg:#0f172a; --card:#1e293b; --fg:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+           font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    h1 { margin:0 0 4px; font-size:1.4rem; }
+    p.sub { margin:0 0 20px; color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+    .card { background:var(--card); border-radius:10px; padding:14px; }
+    .card .name { color:var(--muted); font-size:.85rem; }
+    .card .value { font-size:2rem; font-weight:600; margin:4px 0 8px; }
+    button { background:transparent; color:var(--accent); border:1px solid var(--accent);
+             border-radius:6px; padding:4px 10px; cursor:pointer; }
+    button:hover { background:var(--accent); color:var(--bg); }
+    canvas { width:100%; height:280px; background:var(--card); border-radius:10px; }
+    .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; color:var(--muted); font-size:.85rem; }
+    .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+    #status { font-size:.8rem; color:var(--muted); margin-top:8px; }
+  </style>
+</head>
+<body>
+  <h1>Page views per window</h1>
+  <p class="sub">Live counts from the Kafka Streams state store, pushed over Server-Sent Events.</p>
+
+  <div class="grid" id="cards"></div>
+  <canvas id="chart" width="900" height="280"></canvas>
+  <div class="legend" id="legend"></div>
+  <div id="status">Connecting…</div>
+
+  <script>
+    const COLORS = ["#38bdf8", "#f472b6", "#a3e635", "#fbbf24", "#c084fc", "#fb7185"];
+    const MAX_POINTS = 60;
+    const history = {};          // page -> number[]
+    const cardEls = {};          // page -> value element
+
+    const cards = document.getElementById("cards");
+    const legend = document.getElementById("legend");
+    const status = document.getElementById("status");
+    const canvas = document.getElementById("chart");
+    const ctx = canvas.getContext("2d");
+
+    function ensurePage(page) {
+      if (history[page]) return;
+      const color = COLORS[Object.keys(history).length % COLORS.length];
+      history[page] = [];
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = '<div class="name"></div><div class="value">0</div><button>+ send view</button>';
+      card.querySelector(".name").textContent = page;
+      card.querySelector("button").addEventListener("click", () => sendView(page));
+      cards.appendChild(card);
+      cardEls[page] = card.querySelector(".value");
+
+      const item = document.createElement("span");
+      item.innerHTML = '<span class="dot"></span>';
+      item.firstChild.style.background = color;
+      item.appendChild(document.createTextNode(page));
+      legend.appendChild(item);
+      history[page].color = color;
+    }
+
+    function sendView(page) {
+      fetch("/api/views?page=" + encodeURIComponent(page), { method: "POST" })
+        .catch(err => console.error("publish failed", err));
+    }
+
+    function draw() {
+      const w = canvas.width, h = canvas.height, pad = 24;
+      ctx.clearRect(0, 0, w, h);
+      const pages = Object.keys(history);
+      const max = Math.max(5, ...pages.flatMap(p => history[p]));
+
+      ctx.strokeStyle = "#334155"; ctx.fillStyle = "#94a3b8"; ctx.font = "11px sans-serif";
+      for (let i = 0; i <= 4; i++) {
+        const y = pad + (h - 2 * pad) * i / 4;
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+        ctx.fillText(Math.round(max * (1 - i / 4)), 2, y + 4);
+      }
+      pages.forEach(p => {
+        const pts = history[p];
+        ctx.strokeStyle = pts.color; ctx.lineWidth = 2; ctx.beginPath();
+        pts.forEach((v, i) => {
+          const x = pad + (w - 2 * pad) * i / (MAX_POINTS - 1);
+          const y = h - pad - (h - 2 * pad) * v / max;
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+    }
+
+    const source = new EventSource("/api/analytics/stream");
+    source.onopen = () => { status.textContent = "Live"; };
+    source.onerror = () => { status.textContent = "Disconnected – retrying…"; };
+    source.onmessage = (event) => {
+      const snap = JSON.parse(event.data);
+      Object.entries(snap.counts).forEach(([page, count]) => {
+        ensurePage(page);
+        const series = history[page];
+        series.push(count);
+        if (series.length > MAX_POINTS) series.shift();
+        cardEls[page].textContent = count;
+      });
+      draw();
+    };
+  </script>
+</body>
+</html>

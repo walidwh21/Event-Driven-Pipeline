@@ -36,7 +36,7 @@ flowchart LR
     AGG -. materialises .-> STORE[("page-counts-store")]
     STORE -. interactive query .-> SSE
     SSE -- SSE --> UI["Browser dashboard"]
-    UI -- click["Send View"] --> API
+    UI -- |Click Send View| --> API
 ```
 
 ### Request / event flow
